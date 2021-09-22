@@ -17,8 +17,8 @@
 
 #ifdef UVC
 
-#define CAPTURE_WIDTH 640
-#define CAPTURE_HEIGHT 480
+#define CAPTURE_WIDTH 1920 
+#define CAPTURE_HEIGHT 1080 
 #define CAMERA_DEVICE "/dev/video0"
 
 #ifdef UVC_JINGUI_S9

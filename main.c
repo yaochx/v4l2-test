@@ -13,7 +13,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
-
+#include <time.h>
 
 #ifdef UVC
 
@@ -68,20 +68,24 @@
 #endif
 
 
-#define FRAME_BUFFER_COUNT 6
+#define FRAME_BUFFER_COUNT 300
 struct {
     void *start;
     size_t length;
 } FrameBuffer[FRAME_BUFFER_COUNT];
 
 
-int main()
+int main(int argc, char **argv)
 {
+	if (argc != 2) {
+		printf("v4l4-test /dev/devices#\n");
+		exit(0);
+	}
     int cam_fd;
 
     // open camera device
-    if ((cam_fd = open(CAMERA_DEVICE, O_RDWR)) < 0) {
-        fprintf(stderr, "Fail to open camera device %s .\n", CAMERA_DEVICE);
+    if ((cam_fd = open(argv[1], O_RDWR)) < 0) {
+        fprintf(stderr, "Fail to open camera device %s vs %s.\n", CAMERA_DEVICE, argv[1]);
         return -1;
     }
 
@@ -360,14 +364,32 @@ int main()
         return -1;
     }
 
-    for (i = 0; i < FRAME_BUFFER_COUNT; ++i) {
+	// warmup
+	for (i = 0; i < 60; ++i) {
         // Get frame
-        usleep(100*1000); // n*1000 = n ms
+        // usleep(1*1000); // n*1000 = n ms
         if (ioctl(cam_fd, VIDIOC_DQBUF, &buf) < 0) {
             printf("VIDIOC_DQBUF failed!\n");
             return -1;
         }
+	
+        // requeue buffer
+        if (ioctl(cam_fd, VIDIOC_QBUF, &buf) < 0) {
+            printf("VIDIOC_QBUF failed!\n");
+            return -1;
+        }
+    }
 
+	struct timeval timeStart, timeEnd;
+	gettimeofday(&timeStart, NULL);
+    for (i = 0; i < FRAME_BUFFER_COUNT; ++i) {
+        // Get frame
+        // usleep(1*1000); // n*1000 = n ms
+        if (ioctl(cam_fd, VIDIOC_DQBUF, &buf) < 0) {
+            printf("VIDIOC_DQBUF failed!\n");
+            return -1;
+        }
+		
         char filename[64];
 #ifdef UVC
 #ifdef UVC_JINGUI_S9
@@ -384,6 +406,7 @@ int main()
 #elif RPI3
         sprintf(filename, "capture%d.jpg", i);
 #endif
+#if 0
         FILE *fp = fopen(filename, "w+");
         if (fp < 0) {
             printf("open frame data file failed\n");
@@ -393,6 +416,7 @@ int main()
         fwrite(FrameBuffer[buf.index].start, 1, buf.bytesused, fp);
         fclose(fp);
         printf("Capture one frame saved in %s\n", filename);
+#endif
 
         // requeue buffer
         if (ioctl(cam_fd, VIDIOC_QBUF, &buf) < 0) {
@@ -400,6 +424,9 @@ int main()
             return -1;
         }
     }
+	gettimeofday(&timeEnd, NULL);
+	double runTime = (timeEnd.tv_sec - timeStart.tv_sec ) + (double)(timeEnd.tv_usec -timeStart.tv_usec)/1000000;
+	printf("%s fps : %.2f, time elapsed:  %.2f\n", argv[1], FRAME_BUFFER_COUNT/runTime, runTime);
 
     // stop streaming
     if (ioctl(cam_fd, VIDIOC_STREAMOFF, &type) < 0) {
